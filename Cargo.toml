@@ -1,0 +1,17 @@
+[package]
+name = "ferris-sign"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.13.0"
+clap = "3.0.10"
+rpassword = "6.0.1"
+sigstore = { git = "https://github.com/sigstore/sigstore-rs", branch = "main" }
+open = "2.1.1"
+
+#[cfg(not(target_os = "windows"))]
+openssl = "0.10.38"

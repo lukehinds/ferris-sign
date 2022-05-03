@@ -11,8 +11,8 @@ use openssl::sign::{Signer};
 use openssl::hash::MessageDigest;
 use serde::{Serialize, Deserialize};
 
-const FULCIO_URL: &str = "http://localhost:5000/api/v1/signingCert";
-const SIGSTORE_OAUTH_URL: &str = "http://localhost:5556";
+const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
+const SIGSTORE_OAUTH_URL: &str = "https://oauth2.sigstore.dev/auth";
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,28 +84,8 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .redirect_listener();
 
-            // make result
-            // match result {
-            //     Ok(token_response) => {
-            //         println!("Email {:?}", token_response.email().unwrap().to_string());
-            //         println!(
-            //             "Access Token:{:?}",
-            //             token_response.access_token_hash().unwrap().to_string()
-            //         );
-            //     }
-            //     Err(err) => {
-            //         println!("{}", err);
-            //     }
-            // }
             let (token_response, id_token) = result?;
             let email = token_response.email().unwrap();
-            // let access_token = token_response.access_token_hash().unwrap();
-            // println!("Email {:?}", email.to_string());
-            // println!("Email {:?}", token_response.email().unwrap().to_string());
-            // println!(
-            //     "Access Token:{:?}",
-            //     token_response.access_token_hash().unwrap().to_string()
-            // );
             
             let mut signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
             signer.update(&email.to_string().as_bytes()).unwrap();
@@ -127,7 +107,7 @@ fn main() -> Result<(), anyhow::Error> {
             let client = reqwest::blocking::Client::new();
             let response = client
                 .post(FULCIO_URL)
-                .header("Authorization", format!("Bearer {}", id_token))
+                .header("Authorization", format!("Bearer {}", id_token.to_string()))
                 .header("Content-Type", "application/json")
                 .timeout(Duration::from_secs(120))
                 .body(body)
@@ -141,6 +121,7 @@ fn main() -> Result<(), anyhow::Error> {
             // for cert in certs {
             //     println!("{}", cert);
             // }
+            
         }
     anyhow::Ok(())
 }

@@ -1872,6 +1872,7 @@ dependencies = [
 [[package]]
 name = "sigstore"
 version = "0.2.0"
+source = "git+https://github.com/sigstore/sigstore-rs?branch=main#e2fad05073538ec9f7fa79bf6ff6384c582b6fd0"
 dependencies = [
  "async-trait",
  "base64",

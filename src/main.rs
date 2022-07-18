@@ -1,8 +1,10 @@
 use base64::{encode};
 use clap::{Command, Arg};
 use anyhow::Result;
+use std::{fs::File, io::Write};
 use std::time::Duration;
 use sigstore::oauth;
+use regex::Regex;
 use open;
 use openssl::nid::Nid;
 use openssl::pkey::PKey;
@@ -47,6 +49,13 @@ fn main() -> Result<(), anyhow::Error> {
                 .takes_value(false)
                 .help("OIDC sign"),
         )
+        .arg(
+            Arg::new("cert")
+                .short('f')
+                .long("cert")
+                .takes_value(true)
+                .help("Output signing certificate"),
+        )
         .get_matches();
 
         if matches.is_present("sign") {
@@ -58,8 +67,6 @@ fn main() -> Result<(), anyhow::Error> {
             let public_key = private_key.public_key();
             let ec_pub_key = EcKey::from_public_key(&group, public_key).unwrap();
             let public_key_pem = &ec_pub_key.public_key_to_pem().unwrap();
-            // println!("{}", String::from_utf8(public_key_pem.to_vec()).unwrap());
-            // let encoded_pub = encode(public_key_pem.to_vec());
 
             let oidc_url = oauth::openidflow::OpenIDAuthorize::new(
                 "sigstore",
@@ -71,7 +78,7 @@ fn main() -> Result<(), anyhow::Error> {
             
             if open::that(oidc_url.0.to_string()).is_ok() {
                 println!(
-                    "Open this URL in a browser if it does not automatically open for you:\n{}\n",
+                    "Open this URL in a browser if it does not automatically open for you:\n\n{}\n",
                     oidc_url.0.to_string()
                 );
             }
@@ -91,7 +98,6 @@ fn main() -> Result<(), anyhow::Error> {
             signer.update(&email.to_string().as_bytes()).unwrap();
 
             let signature = signer.sign_to_vec().unwrap();
-            println!("Signature: {}", encode(&signature));
 
             let params = FulcioPayload {
                 public_key: PublicKey {
@@ -102,7 +108,7 @@ fn main() -> Result<(), anyhow::Error> {
             };
 
             let body = serde_json::to_string(&params).unwrap();
-            println!("body: {}", body);
+            // println!("body: {}", body);
 
             let client = reqwest::blocking::Client::new();
             let response = client
@@ -112,17 +118,29 @@ fn main() -> Result<(), anyhow::Error> {
                 .timeout(Duration::from_secs(120))
                 .body(body)
                 .send()?;
-            println!("create_ref HTTP code {:?}", response.status());
-            // print the response body
-            let body = response.text()?;
-            println!("create_ref response body {:?}", body);
+            let certs = response.text()?;
 
-            // let certs = body.split_whitespace();
-            // for cert in certs {
-            //     println!("{}", cert);
-            // }
+            // stick the signers cert into here (based on it being 'sigstore-intermediate')
+            let mut cert_pem = String::new();
+
+            let cert_re = Regex::new(r#"-----BEGIN CERTIFICATE-----([^-]*)-----END CERTIFICATE-----"#).unwrap(); 
+            for capture in cert_re.find_iter(&String::from_utf8(certs.as_bytes().to_vec()).unwrap()) {
+                let cert = openssl::x509::X509::from_pem(capture.as_str().as_bytes()).unwrap();
+                for jk in cert.issuer_name().entries() {
+                    if matches.is_present("cert") {
+                        // print the value of file
+                        if jk.data().as_slice() == b"sigstore-intermediate" {
+                            let filename = matches.value_of("cert").unwrap();
+                            let mut file = File::create(filename).unwrap();
+                            cert_pem.push_str(capture.as_str());
+                            file.write_all(capture.as_str().as_bytes()).unwrap();
             
+                        }
+                    }
+                    
+                }
+            }
+            // println!("{}", cert_pem);
         }
     anyhow::Ok(())
 }
-

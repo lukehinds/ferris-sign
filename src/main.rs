@@ -1,7 +1,7 @@
 use base64::{encode};
 use clap::{Command, Arg};
 use anyhow::Result;
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, io::copy};
 use std::time::Duration;
 use sigstore::oauth;
 use regex::Regex;
@@ -12,6 +12,17 @@ use openssl::{ec::EcGroup, ec::EcKey};
 use openssl::sign::{Signer};
 use openssl::hash::MessageDigest;
 use serde::{Serialize, Deserialize};
+use data_encoding::HEXLOWER;
+use sha2::{Digest, Sha256};
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
+
+use rekor::apis::{configuration::Configuration, entries_api};
+use rekor::models::{
+    hashedrekord::{AlgorithmKind, Data, Hash, PublicKey, Signature, Spec},
+    ProposedEntry,
+};
+use url::Url;
 
 const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
 const SIGSTORE_OAUTH_URL: &str = "https://oauth2.sigstore.dev/auth";
@@ -19,15 +30,34 @@ const SIGSTORE_OAUTH_URL: &str = "https://oauth2.sigstore.dev/auth";
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FulcioPayload {
-    pub public_key: PublicKey,
+    pub public_key: PubKey,
     pub signed_email_address: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKey {
-    pub content: String,
+pub struct PubKey {
     pub algorithm: String,
+    pub content: String,
+}
+
+
+/// calculates sha256 digest as lowercase hex string
+fn sha256_digest(path: PathBuf) -> Result<String> {
+    let input = File::open(path)?;
+    let mut reader = BufReader::new(input);
+
+    let digest = {
+        let mut hasher = Sha256::new();
+        let mut buffer = [0; 1024];
+        loop {
+            let count = reader.read(&mut buffer)?;
+            if count == 0 { break }
+            hasher.update(&buffer[..count]);
+        }
+        hasher.finalize()
+    };
+    Ok(HEXLOWER.encode(digest.as_ref()))
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -51,22 +81,30 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .arg(
             Arg::new("cert")
-                .short('f')
+                .short('c')
                 .long("cert")
                 .takes_value(true)
                 .help("Output signing certificate"),
         )
+        .arg(
+            Arg::new("file")
+                .short('f')
+                .long("file")
+                .takes_value(true)
+                .help("Output signing certificate")
+        )
         .get_matches();
 
+        // set up keys
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+        let private_key = EcKey::generate(&group).unwrap();
+        let key = PKey::from_ec_key(private_key.clone())?;
+
+        let public_key = private_key.public_key();
+        let ec_pub_key = EcKey::from_public_key(&group, public_key).unwrap();
+        let public_key_pem = &ec_pub_key.public_key_to_pem().unwrap();
+
         if matches.is_present("sign") {
-
-            let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-            let private_key = EcKey::generate(&group).unwrap();
-            let key = PKey::from_ec_key(private_key.clone())?;
-
-            let public_key = private_key.public_key();
-            let ec_pub_key = EcKey::from_public_key(&group, public_key).unwrap();
-            let public_key_pem = &ec_pub_key.public_key_to_pem().unwrap();
 
             let oidc_url = oauth::openidflow::OpenIDAuthorize::new(
                 "sigstore",
@@ -100,7 +138,7 @@ fn main() -> Result<(), anyhow::Error> {
             let signature = signer.sign_to_vec().unwrap();
 
             let params = FulcioPayload {
-                public_key: PublicKey {
+                public_key: PubKey {
                     content: encode(public_key_pem.to_vec()),
                     algorithm: String::from("ecdsa"),
                 },
@@ -141,6 +179,16 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
             // println!("{}", cert_pem);
+            // rekor
+            
         }
+        let digest = Sha256::new();
+        if matches.is_present("file") {
+            let filename = matches.value_of("file").unwrap();
+            let digest = sha256_digest(PathBuf::from(filename))?;
+            println!("{}", digest);
+        }
+        println!("{:?}", digest);
+
     anyhow::Ok(())
 }

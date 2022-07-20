@@ -2,18 +2,14 @@ use anyhow::Result;
 use base64::encode;
 use clap::{Arg, Command};
 use open;
-use openssl::hash::MessageDigest;
-use openssl::nid::Nid;
-use openssl::pkey::PKey;
-use openssl::sign::Signer;
-use openssl::{ec::EcGroup, ec::EcKey};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
-use std::io::{Read};
+use std::io::Read;
 use std::time::Duration;
 use std::{fs::File, io::Write};
 
+mod crypto;
 extern crate question;
 
 const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
@@ -77,14 +73,8 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .get_matches();
 
-    // set up keys
-    let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-    let private_key = EcKey::generate(&group).unwrap();
-    let key = PKey::from_ec_key(private_key.clone())?;
-
-    let public_key = private_key.public_key();
-    let ec_pub_key = EcKey::from_public_key(&group, public_key).unwrap();
-    let public_key_pem = &ec_pub_key.public_key_to_pem().unwrap();
+    let (private_key, public_key_pem) = crypto::create_keys()?;
+    let mut scope_signer = crypto::create_signer(&private_key)?;
 
     if matches.is_present("sign") {
         let oidc_url = oauth::openidflow::OpenIDAuthorize::new(
@@ -114,14 +104,13 @@ fn main() -> Result<(), anyhow::Error> {
         let email = token_response.email().unwrap();
         println!("Received token for email scope: {}", email.to_string());
 
-        let mut signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
-        signer.update(&email.to_string().as_bytes()).unwrap();
+        scope_signer.update(&email.to_string().as_bytes()).unwrap();
 
-        let signature = signer.sign_to_vec().unwrap();
+        let signature = scope_signer.sign_to_vec().unwrap();
 
         let params = FulcioPayload {
             public_key: PubKey {
-                content: encode(public_key_pem.to_vec()),
+                content: encode(public_key_pem),
                 algorithm: String::from("ecdsa"),
             },
             signed_email_address: encode(&signature),
@@ -140,7 +129,6 @@ fn main() -> Result<(), anyhow::Error> {
             .send()?;
         let certs = response.text()?;
 
-        // stick the signers cert into here (based on it being 'sigstore-intermediate')
         let mut cert_pem = String::new();
 
         let cert_re =
@@ -159,24 +147,26 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
         }
-        println!("Saving signing cerificate to {}", matches.value_of("cert").unwrap());
-        // println!("{}", cert_pem);
-        println!("Signing file {}", matches.value_of("file").unwrap());
+        println!(
+            "Saving signing cerificate to {}",
+            matches.value_of("cert").unwrap()
+        );
+
         let filename = matches.value_of("file").unwrap();
         let signature_filename = matches.value_of("signature").unwrap();
         // sign filename
         let mut file = File::open(filename).unwrap();
-        let mut file_signer = Signer::new(MessageDigest::sha256(), &key).unwrap();
-        // convert file to bytes
+
+        let mut file_signer = crypto::create_signer(&private_key)?;
         let mut file_bytes = Vec::new();
         file.read_to_end(&mut file_bytes).unwrap();
         file_signer.update(&file_bytes).unwrap();
         let signature = file_signer.sign_to_vec().unwrap();
+
         let mut file = File::create(signature_filename).unwrap();
         // write signature to file
         file.write_all(&signature).unwrap();
         println!("Saving signature to {}", signature_filename);
-        question::Question::new("Submit signing entries rekor (Y/N)?").confirm();
     }
     anyhow::Ok(())
 }

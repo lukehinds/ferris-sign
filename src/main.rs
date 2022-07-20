@@ -2,19 +2,15 @@ use anyhow::Result;
 use base64::encode;
 use clap::{Arg, Command};
 use open;
-// use openssl::hash::MessageDigest;
-// use openssl::sign::Signer;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
-use std::io::{Read};
+use std::io::Read;
 use std::time::Duration;
 use std::{fs::File, io::Write};
-// use create_keys from crypto.rs
 
 mod crypto;
 extern crate question;
-
 
 const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
 const SIGSTORE_OAUTH_URL: &str = "https://oauth2.sigstore.dev/auth";
@@ -108,7 +104,6 @@ fn main() -> Result<(), anyhow::Error> {
         let email = token_response.email().unwrap();
         println!("Received token for email scope: {}", email.to_string());
 
-        // let mut signer = Signer::new(MessageDigest::sha256(), &private_key).unwrap();
         scope_signer.update(&email.to_string().as_bytes()).unwrap();
 
         let signature = scope_signer.sign_to_vec().unwrap();
@@ -134,7 +129,6 @@ fn main() -> Result<(), anyhow::Error> {
             .send()?;
         let certs = response.text()?;
 
-        // stick the signers cert into here (based on it being 'sigstore-intermediate')
         let mut cert_pem = String::new();
 
         let cert_re =
@@ -153,8 +147,11 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
         }
-        println!("Saving signing cerificate to {}", matches.value_of("cert").unwrap());
-     
+        println!(
+            "Saving signing cerificate to {}",
+            matches.value_of("cert").unwrap()
+        );
+
         let filename = matches.value_of("file").unwrap();
         let signature_filename = matches.value_of("signature").unwrap();
         // sign filename

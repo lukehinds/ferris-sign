@@ -1,10 +1,10 @@
+use openssl::hash::MessageDigest;
 use openssl::nid::Nid;
 use openssl::pkey::{PKey, Private};
+use openssl::sign::Signer;
 use openssl::{ec::EcGroup, ec::EcKey};
-use openssl::sign::{Signer};
-use openssl::hash::MessageDigest;
 
-pub fn create_keys() -> Result<(PKey<Private>, String ), anyhow::Error> {
+pub fn create_keys() -> Result<(PKey<Private>, String), anyhow::Error> {
     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
     let key_pair = EcKey::generate(&group).unwrap();
     let private_key = PKey::from_ec_key(key_pair.clone())?;

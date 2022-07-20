@@ -61,7 +61,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .long("file")
                 .required(true)
                 .takes_value(true)
-                .help("Output signing certificate"),
+                .help("Output signature file"),
         )
         .arg(
             Arg::new("signature")

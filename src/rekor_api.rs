@@ -6,12 +6,12 @@ use rekor::models::{
 };
 use url::Url;
 
-pub async fn create_log(hash: &str, public_key: &str, signature: &str) -> Result<LogEntry, anyhow::Error> {
+pub async fn create_log(hash: &str, public_key: &str, signature: &str) -> Result<LogEntry, rekor::apis::Error<entries_api::CreateLogEntryError>> {
     let configuration = Configuration::default();
 
     const KEY_FORMAT: &str = "x509";
     const API_VERSION: &str = "0.0.1";
-    const URL: &str = "https://raw.githubusercontent.com/jyotsna-penumaka/rekor-rs/rekor-functionality/test_data/data";
+    const URL: &str = "https://raw.githubusercontent.com/jyotsna-penumaka/rekor-rs/rekor-functionality/test_data/meg";
 
     let hash = Hash::new(
         AlgorithmKind::sha256,
@@ -36,7 +36,7 @@ pub async fn create_log(hash: &str, public_key: &str, signature: &str) -> Result
         spec: spec,
     };
 
-    let log_entry = entries_api::create_log_entry(&configuration, proposed_entry).await?;
+    let log_entry = entries_api::create_log_entry(&configuration, proposed_entry).await;
     println!("{:#?}", log_entry);
-    Ok(log_entry)
+    Ok(log_entry.unwrap())
 }

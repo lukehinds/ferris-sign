@@ -6,10 +6,12 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
 use std::io::Read;
-use std::time::Duration;
+use std::path::PathBuf;
 use std::{fs::File, io::Write};
+use tokio::task;
 
 mod crypto;
+mod rekor_api;
 extern crate question;
 
 const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
@@ -28,8 +30,8 @@ pub struct PubKey {
     pub algorithm: String,
     pub content: String,
 }
-
-fn main() -> Result<(), anyhow::Error> {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
     let matches = Command::new("ferris-sign")
         .version("0.1")
         .author("Luke Hinds")
@@ -77,13 +79,18 @@ fn main() -> Result<(), anyhow::Error> {
     let mut scope_signer = crypto::create_signer(&private_key)?;
 
     if matches.is_present("sign") {
-        let oidc_url = oauth::openidflow::OpenIDAuthorize::new(
-            "sigstore",
-            "",
-            SIGSTORE_OAUTH_URL,
-            "http://localhost:8080",
-        )
-        .auth_url()?;
+
+        // use tokio::task::spawn_blocking to call OpenIDAuthorize in a blocking thread
+        let oidc_url = task::spawn_blocking(move || {
+            oauth::openidflow::OpenIDAuthorize::new(
+                "sigstore",
+                "",
+                SIGSTORE_OAUTH_URL,
+                "http://localhost:8080",
+            )
+            .auth_url()
+            .unwrap()
+        }).await?;
 
         if open::that(oidc_url.0.to_string()).is_ok() {
             println!(
@@ -92,15 +99,23 @@ fn main() -> Result<(), anyhow::Error> {
             );
         }
 
-        let result = oauth::openidflow::RedirectListener::new(
-            "127.0.0.1:8080",
-            oidc_url.1, // client
-            oidc_url.2, // nonce
-            oidc_url.3, // pkce_verifier
-        )
-        .redirect_listener();
+        // use tokio::task::spawn_blocking to call RedirectListener in a blocking thread
+        let result = task::spawn_blocking(move || {
+            oauth::openidflow::RedirectListener::new(
+                "127.0.0.1:8080",
+                oidc_url.1, // client
+                oidc_url.2, // nonce
+                oidc_url.3, //
+            )
+            .redirect_listener()
+            .unwrap()
+        }).await?;
 
-        let (token_response, id_token) = result?;
+        // use tokio::task::spawn_blocking to call RedirectListener in a blocking thread
+        let result = task::spawn_blocking(move || result).await?;
+
+
+        let (token_response, id_token) = result;
         let email = token_response.email().unwrap();
         println!("Received token for email scope: {}", email.to_string());
 
@@ -110,7 +125,7 @@ fn main() -> Result<(), anyhow::Error> {
 
         let params = FulcioPayload {
             public_key: PubKey {
-                content: encode(public_key_pem),
+                content: encode(&public_key_pem),
                 algorithm: String::from("ecdsa"),
             },
             signed_email_address: encode(&signature),
@@ -119,15 +134,15 @@ fn main() -> Result<(), anyhow::Error> {
         let body = serde_json::to_string(&params).unwrap();
         println!("Requesting signing certificate from Fulcio...");
 
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
         let response = client
             .post(FULCIO_URL)
             .header("Authorization", format!("Bearer {}", id_token.to_string()))
             .header("Content-Type", "application/json")
-            .timeout(Duration::from_secs(120))
             .body(body)
-            .send()?;
-        let certs = response.text()?;
+            .send()
+            .await?;
+        let certs = response.text().await?;
 
         let mut cert_pem = String::new();
 
@@ -153,6 +168,7 @@ fn main() -> Result<(), anyhow::Error> {
         );
 
         let filename = matches.value_of("file").unwrap();
+
         let signature_filename = matches.value_of("signature").unwrap();
         // sign filename
         let mut file = File::open(filename).unwrap();
@@ -167,6 +183,19 @@ fn main() -> Result<(), anyhow::Error> {
         // write signature to file
         file.write_all(&signature).unwrap();
         println!("Saving signature to {}", signature_filename);
+        // print signature to stdout
+
+        // convert signature to base64
+        let signature_base64 = encode(&signature);
+        let public_key_base64 = encode(&public_key_pem);
+
+        // send to rekor
+        let hash = crypto::sha256_digest(PathBuf::from(filename))?;
+
+        // call rekor_api create_log function
+        println!("Sending signature artifacts to rekor...");
+        let log_entry = rekor_api::create_log(&hash, &public_key_base64 , &signature_base64).await;
+        println!("{:#?}", log_entry);
     }
     anyhow::Ok(())
 }

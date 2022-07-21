@@ -79,7 +79,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut scope_signer = crypto::create_signer(&private_key)?;
 
     if matches.is_present("sign") {
-
         // use tokio::task::spawn_blocking to call OpenIDAuthorize in a blocking thread
         let oidc_url = task::spawn_blocking(move || {
             oauth::openidflow::OpenIDAuthorize::new(
@@ -90,7 +89,8 @@ async fn main() -> Result<(), anyhow::Error> {
             )
             .auth_url()
             .unwrap()
-        }).await?;
+        })
+        .await?;
 
         if open::that(oidc_url.0.to_string()).is_ok() {
             println!(
@@ -109,11 +109,11 @@ async fn main() -> Result<(), anyhow::Error> {
             )
             .redirect_listener()
             .unwrap()
-        }).await?;
+        })
+        .await?;
 
         // use tokio::task::spawn_blocking to call RedirectListener in a blocking thread
         let result = task::spawn_blocking(move || result).await?;
-
 
         let (token_response, id_token) = result;
         let email = token_response.email().unwrap();
@@ -192,9 +192,8 @@ async fn main() -> Result<(), anyhow::Error> {
         // send to rekor
         let hash = crypto::sha256_digest(PathBuf::from(filename))?;
 
-        // call rekor_api create_log function
         println!("Sending signature artifacts to rekor...");
-        let log_entry = rekor_api::create_log(&hash, &public_key_base64 , &signature_base64).await;
+        let log_entry = rekor_api::create_log(&hash, &public_key_base64, &signature_base64).await;
         println!("{:#?}", log_entry);
     }
     anyhow::Ok(())

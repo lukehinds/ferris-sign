@@ -6,10 +6,12 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
 use std::io::Read;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::{fs::File, io::Write};
 
 mod crypto;
+mod rekor_api;
 extern crate question;
 
 const FULCIO_URL: &str = "https://fulcio.sigstore.dev/api/v1/signingCert";
@@ -153,6 +155,7 @@ fn main() -> Result<(), anyhow::Error> {
         );
 
         let filename = matches.value_of("file").unwrap();
+
         let signature_filename = matches.value_of("signature").unwrap();
         // sign filename
         let mut file = File::open(filename).unwrap();
@@ -167,6 +170,19 @@ fn main() -> Result<(), anyhow::Error> {
         // write signature to file
         file.write_all(&signature).unwrap();
         println!("Saving signature to {}", signature_filename);
+        // print signature to stdout
+
+        // convert signature to base64
+        let signature_base64 = encode(&signature);
+        let public_key_base64 = encode(&public_key_pem);
+
+        // send to rekor
+        let hash = crypto::sha256_digest(PathBuf::from(filename))?;
+        println!("Digest: {}", hash);
+
+        // call rekor_api create_log function
+        let log_entry = rekor_api::create_log(&hash, &public_key_base64 , &signature_base64);
+        println!("{:#?}", log_entry);
     }
     anyhow::Ok(())
 }

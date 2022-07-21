@@ -191,9 +191,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
         // send to rekor
         let hash = crypto::sha256_digest(PathBuf::from(filename))?;
-        println!("Digest: {}", hash);
 
         // call rekor_api create_log function
+        println!("Sending signature artifacts to rekor...");
         let log_entry = rekor_api::create_log(&hash, &public_key_base64 , &signature_base64).await;
         println!("{:#?}", log_entry);
     }

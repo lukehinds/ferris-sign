@@ -37,6 +37,5 @@ pub async fn create_log(hash: &str, public_key: &str, signature: &str) -> Result
     };
 
     let log_entry = entries_api::create_log_entry(&configuration, proposed_entry).await;
-    println!("{:#?}", log_entry);
     Ok(log_entry.unwrap())
 }

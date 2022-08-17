@@ -1,7 +1,6 @@
 use anyhow::Result;
 use base64::encode;
 use clap::{Arg, Command};
-use open;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
@@ -95,7 +94,7 @@ async fn main() -> Result<(), anyhow::Error> {
         if open::that(oidc_url.0.to_string()).is_ok() {
             println!(
                 "Open this URL in a browser if it does not automatically open for you:\n{}\n",
-                oidc_url.0.to_string()
+                oidc_url.0
             );
         }
 
@@ -117,9 +116,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let (token_response, id_token) = result;
         let email = token_response.email().unwrap();
-        println!("Received token for email scope: {}", email.to_string());
+        println!("Received token for email scope: {:?}", email);
 
-        scope_signer.update(&email.to_string().as_bytes()).unwrap();
+        scope_signer.update(email.to_string().as_bytes()).unwrap();
 
         let signature = scope_signer.sign_to_vec().unwrap();
 

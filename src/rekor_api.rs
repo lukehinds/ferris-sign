@@ -23,7 +23,7 @@ pub async fn create_log(
     let spec = Spec::new(signature, data);
     let proposed_entry = ProposedEntry::Hashedrekord {
         api_version: API_VERSION.to_string(),
-        spec: spec,
+        spec,
     };
 
     let log_entry = entries_api::create_log_entry(&configuration, proposed_entry).await;

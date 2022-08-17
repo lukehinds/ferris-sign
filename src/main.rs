@@ -51,27 +51,27 @@ async fn main() -> Result<(), anyhow::Error> {
                 .help("OIDC sign"),
         )
         .arg(
-            Arg::new("cert")
+            Arg::new("cert-out")
                 .short('c')
-                .long("cert")
+                .long("cert-out")
                 .takes_value(true)
-                .help("Output signing certificate"),
+                .help("Location to place signing certificate output"),
         )
         .arg(
-            Arg::new("file")
-                .short('f')
-                .long("file")
+            Arg::new("in-file")
+                .short('i')
+                .long("in-file")
                 .required(true)
                 .takes_value(true)
-                .help("Output signature file"),
+                .help("Location of file to sign"),
         )
         .arg(
-            Arg::new("signature")
-                .short('n')
-                .long("signature")
+            Arg::new("sig-out")
+                .short('o')
+                .long("sig-out")
                 .required(true)
                 .takes_value(true)
-                .help("Output signature"),
+                .help("Location to place signature output"),
         )
         .get_matches();
 
@@ -151,10 +151,10 @@ async fn main() -> Result<(), anyhow::Error> {
         for capture in cert_re.find_iter(&String::from_utf8(certs.as_bytes().to_vec()).unwrap()) {
             let cert = openssl::x509::X509::from_pem(capture.as_str().as_bytes()).unwrap();
             for jk in cert.issuer_name().entries() {
-                if matches.is_present("cert") {
+                if matches.is_present("cert-out") {
                     // print the value of file
                     if jk.data().as_slice() == b"sigstore-intermediate" {
-                        let filename = matches.value_of("cert").unwrap();
+                        let filename = matches.value_of("cert-out").unwrap();
                         let mut file = File::create(filename).unwrap();
                         cert_pem.push_str(capture.as_str());
                         file.write_all(capture.as_str().as_bytes()).unwrap();
@@ -164,12 +164,12 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         println!(
             "Saving signing cerificate to {}",
-            matches.value_of("cert").unwrap()
+            matches.value_of("cert-out").unwrap()
         );
 
-        let filename = matches.value_of("file").unwrap();
+        let filename = matches.value_of("in-file").unwrap();
 
-        let signature_filename = matches.value_of("signature").unwrap();
+        let signature_filename = matches.value_of("sig-out").unwrap();
         // sign filename
         let mut file = File::open(filename).unwrap();
 

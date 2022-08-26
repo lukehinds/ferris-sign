@@ -7,7 +7,7 @@
 ### Sign a file
 Sign an example file, such as `README.md` from this directory:
 ```
-cargo run -- --sign --cert cert.pem --file README.md --signature signature.bin
+cargo run -- --sign --cert-out cert.pem --in-file README.md --sig-out signature.bin
 ```
 
 ### View Fulcio signing certificate

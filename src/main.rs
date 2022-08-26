@@ -170,6 +170,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let signature_filename = matches.value_of("sig-out").unwrap();
         // sign filename
+        let _ = File::create(filename).unwrap();
         let mut file = File::open(filename).unwrap();
 
         let mut file_signer = crypto::create_signer(&private_key)?;

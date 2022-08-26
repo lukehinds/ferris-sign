@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use std::{fs::File, io::Write};
 use tokio::task;
 
+use sigstore::crypto::signing_key::{SigStoreSigner, SigningScheme};
+
 mod crypto;
 mod rekor_api;
 extern crate question;
@@ -35,13 +37,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .version("0.1")
         .author("Luke Hinds")
         .about("Simple rust based example of sigstore signing")
-        .arg(
-            Arg::new("generate-keys")
-                .short('k')
-                .long("generate-keys")
-                .takes_value(false)
-                .help("Generate key pair"),
-        )
         .arg(
             Arg::new("sign")
                 .short('s')
@@ -74,8 +69,8 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .get_matches();
 
-    let (private_key, public_key_pem) = crypto::create_keys()?;
-    let mut scope_signer = crypto::create_signer(&private_key)?;
+    let signer = SigStoreSigner::new(SigningScheme::ECDSA_P256_SHA256_ASN1)
+        .expect("Could not create sigstore signer");
 
     if matches.is_present("sign") {
         // use tokio::task::spawn_blocking to call OpenIDAuthorize in a blocking thread
@@ -118,10 +113,9 @@ async fn main() -> Result<(), anyhow::Error> {
         let email = token_response.email().unwrap();
         println!("Received token for email scope: {:?}", email);
 
-        scope_signer.update(email.to_string().as_bytes()).unwrap();
+        let signature = signer.sign(email.to_string().as_bytes()).unwrap();
 
-        let signature = scope_signer.sign_to_vec().unwrap();
-
+        let public_key_pem = signer.public_key_to_pem()?;
         let params = FulcioPayload {
             public_key: PubKey {
                 content: encode(&public_key_pem),
@@ -173,11 +167,9 @@ async fn main() -> Result<(), anyhow::Error> {
         let _ = File::create(filename).unwrap();
         let mut file = File::open(filename).unwrap();
 
-        let mut file_signer = crypto::create_signer(&private_key)?;
         let mut file_bytes = Vec::new();
         file.read_to_end(&mut file_bytes).unwrap();
-        file_signer.update(&file_bytes).unwrap();
-        let signature = file_signer.sign_to_vec().unwrap();
+        let signature = signer.sign(&file_bytes).unwrap();
 
         let mut file = File::create(signature_filename).unwrap();
         // write signature to file

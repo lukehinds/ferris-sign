@@ -11,7 +11,8 @@ async-std = "1.12.0"
 base64 = "0.13.0"
 clap = "3.1.18"
 data-encoding = "2.3.2"
-sigstore = { git = "https://github.com/sigstore/sigstore-rs", branch = "main" }
+#sigstore = { git = "https://github.com/sigstore/sigstore-rs", branch = "main" }
+sigstore = "0.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 open = "2.1.1"

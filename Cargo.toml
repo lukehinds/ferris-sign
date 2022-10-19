@@ -11,8 +11,8 @@ async-std = "1.12.0"
 base64 = "0.13.0"
 clap = "3.1.18"
 data-encoding = "2.3.2"
-#sigstore = { git = "https://github.com/sigstore/sigstore-rs", branch = "main" }
-sigstore = "0.4.0"
+sigstore = { git = "https://github.com/sigstore/sigstore-rs", branch = "main" }
+#sigstore = "0.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 open = "2.1.1"
@@ -21,8 +21,7 @@ reqwest = { version = "0.11.8", features = ["blocking", "json"] }
 #[cfg(not(target_os = "windows"))]
 openssl = "0.10.38"
 regex = "1.6.0"
-rekor = { git = "https://github.com/jyotsna-penumaka/rekor-rs", branch = "master" }
-sha2 = "0.10.2"
+sha2 = "0.10.6"
 url = { version = "^2.2" , features = ["serde"] }
 tokio = { version = "1.14.0", features = ["full"] }
 question = "0.2.2"

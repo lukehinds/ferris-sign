@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::{fs::File, io::Write};
 use tokio::task;
 
-use sigstore::crypto::signing_key::{SigStoreSigner, SigningScheme};
+use sigstore::crypto::SigningScheme;
 
 mod crypto;
 mod rekor_api;
@@ -69,8 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .get_matches();
 
-    let signer = SigStoreSigner::new(SigningScheme::ECDSA_P256_SHA256_ASN1)
-        .expect("Could not create sigstore signer");
+    let signer = SigningScheme::ECDSA_P256_SHA256_ASN1.create_signer()?;
 
     if matches.is_present("sign") {
         // use tokio::task::spawn_blocking to call OpenIDAuthorize in a blocking thread
@@ -115,7 +114,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let signature = signer.sign(email.to_string().as_bytes()).unwrap();
 
-        let public_key_pem = signer.public_key_to_pem()?;
+        let key_pair = signer.to_sigstore_keypair()?;
+        let public_key_pem = key_pair.public_key_to_pem()?;
         let params = FulcioPayload {
             public_key: PubKey {
                 content: encode(&public_key_pem),

@@ -1,5 +1,5 @@
-use rekor::apis::{configuration::Configuration, entries_api};
-use rekor::models::{
+use sigstore::rekor::apis::{configuration::Configuration, entries_api};
+use sigstore::rekor::models::{
     hashedrekord::{AlgorithmKind, Data, Hash, PublicKey, Signature, Spec},
     LogEntry, ProposedEntry,
 };

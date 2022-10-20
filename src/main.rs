@@ -72,6 +72,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let signer = SigningScheme::ECDSA_P256_SHA256_ASN1.create_signer()?;
 
     if matches.is_present("sign") {
+        let in_filename = matches.value_of("in-file").unwrap();
+        let sig_filename = matches.value_of("sig-out").unwrap();
+        let cert_filename = matches.value_of("cert-out").unwrap();
+
         // use tokio::task::spawn_blocking to call OpenIDAuthorize in a blocking thread
         let oidc_url = task::spawn_blocking(move || {
             oauth::openidflow::OpenIDAuthorize::new(
@@ -160,33 +164,37 @@ async fn main() -> Result<(), anyhow::Error> {
             matches.value_of("cert-out").unwrap()
         );
 
-        let filename = matches.value_of("in-file").unwrap();
-
-        let signature_filename = matches.value_of("sig-out").unwrap();
-        // sign filename
-        let _ = File::create(filename).unwrap();
-        let mut file = File::open(filename).unwrap();
-
+        // sign in-file contents
+        let mut file = File::open(in_filename).unwrap();
         let mut file_bytes = Vec::new();
         file.read_to_end(&mut file_bytes).unwrap();
         let signature = signer.sign(&file_bytes).unwrap();
 
-        let mut file = File::create(signature_filename).unwrap();
         // write signature to file
+        let mut file = File::create(sig_filename).unwrap();
         file.write_all(&signature).unwrap();
-        println!("Saving signature to {}", signature_filename);
-        // print signature to stdout
+        println!("Saving signature to {}", sig_filename);
 
-        // convert signature to base64
+        // read in bytes from cert file
+        let mut cert_file_open = File::open(cert_filename).unwrap();
+        let mut cert_file_bytes = Vec::new();
+        cert_file_open.read_to_end(&mut cert_file_bytes).unwrap();
+
+        // send to rekor, converting signature and cert to base64
         let signature_base64 = encode(&signature);
-        let public_key_base64 = encode(&public_key_pem);
+        let cert_file_base64 = encode(&cert_file_bytes);
 
-        // send to rekor
-        let hash = crypto::sha256_digest(PathBuf::from(filename))?;
+        let hash = crypto::sha256_digest(PathBuf::from(in_filename))?;
 
         println!("Sending signature artifacts to rekor...");
-        let log_entry = rekor_api::create_log(&hash, &public_key_base64, &signature_base64).await;
+        let log_entry = rekor_api::create_log(&hash, &cert_file_base64, &signature_base64).await;
         println!("{:#?}", log_entry);
+
+        // retrieve same entry from rekor
+        let uuid = log_entry.unwrap().uuid;
+        let retrieved_entry = rekor_api::get_entry_by_uuid(&uuid).await.unwrap();
+        println!("Retrieved log entry from Rekor by UUID... {}", uuid);
+        println!("{:#?}", retrieved_entry);
     }
     anyhow::Ok(())
 }

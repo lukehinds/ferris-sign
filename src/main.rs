@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::{fs::File, io::Write};
 use tokio::task;
 
-use sigstore::crypto::SigningScheme;
+use sigstore::crypto::{SigningScheme, Signature};
 
 mod crypto;
 mod rekor_api;
@@ -66,6 +66,31 @@ async fn main() -> Result<(), anyhow::Error> {
                 .required(true)
                 .takes_value(true)
                 .help("Location to place signature output"),
+        )
+        .arg(
+            Arg::new("verify")
+            .short('v')
+            .long("verify")
+            .takes_value(false)
+            .help("Verify a signature on a file")
+        )
+        .arg(
+            Arg::new("sig-in")
+            .long("sig-in")
+            .takes_value(true)
+            .help("Path to signature file for verification")
+        )
+        .arg(
+            Arg::new("pubkey")
+            .long("pubkey")
+            .takes_value(true)
+            .help("Path to pubkey file for verification")
+        )
+        .arg(
+            Arg::new("signed")
+            .long("signed")
+            .takes_value(true)
+            .help("Path to signed file for verification")
         )
         .get_matches();
 
@@ -187,6 +212,27 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("Sending signature artifacts to rekor...");
         let log_entry = rekor_api::create_log(&hash, &public_key_base64, &signature_base64).await;
         println!("{:#?}", log_entry);
+
+        if matches.is_present("verify") {
+            let verification_key = signer.to_verification_key()?;
+            println!("Derive verification key from signer.\n");
+
+            println!("Verifying the signature...\n");
+            verification_key.verify_signature(
+                Signature::Raw(&signature),
+                &file_bytes
+            )?;
+
+            println!("Verification succeeded.");
+        }
     }
+
+    if matches.is_present("verify") {
+        // TODO: make required
+        //let _signed_path = matches.value_of("signed").unwrap();
+        //let _pubkey_path = matches.value_of("pubkey").unwrap();
+        //let _sig_path = matches.value_of("sig-in").unwrap();
+    }
+    
     anyhow::Ok(())
 }

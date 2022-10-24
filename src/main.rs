@@ -1,6 +1,7 @@
 use anyhow::Result;
 use base64::encode;
 use clap::{Arg, Command};
+use openssl::x509::X509;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sigstore::oauth;
@@ -41,6 +42,9 @@ async fn main() -> Result<(), anyhow::Error> {
             Arg::new("sign")
                 .short('s')
                 .long("sign")
+                .requires("in-file")
+                .requires("sig-out")
+                .requires("cert-out")
                 .takes_value(false)
                 .help("OIDC sign"),
         )
@@ -55,7 +59,6 @@ async fn main() -> Result<(), anyhow::Error> {
             Arg::new("in-file")
                 .short('i')
                 .long("in-file")
-                .required(true)
                 .takes_value(true)
                 .help("Location of file to sign"),
         )
@@ -63,13 +66,36 @@ async fn main() -> Result<(), anyhow::Error> {
             Arg::new("sig-out")
                 .short('o')
                 .long("sig-out")
-                .required(true)
                 .takes_value(true)
                 .help("Location to place signature output"),
+        )
+        .arg(
+            Arg::new("extract")
+            .short('e')
+            .long("extract")
+            .takes_value(true)
+            .help("Extract public key from Fulcio signing certificate")
         )
         .get_matches();
 
     let signer = SigningScheme::ECDSA_P256_SHA256_ASN1.create_signer()?;
+
+    if matches.is_present("extract") {
+
+        // TODO: should this functionality be added to sigstore-rs?
+
+        let cert_file = matches.value_of("extract").unwrap();
+        let mut file = File::open(cert_file)?;
+        let mut cert_data = Vec::new();
+        file.read_to_end(&mut cert_data)?;
+
+        let certificate = X509::from_pem(&cert_data)?;
+        let pub_key_pem = certificate.public_key()?.public_key_to_pem()?;
+        let pub_key_pem_string = String::from_utf8(pub_key_pem)?;
+
+        println!("Extracted public key from Fulcio signing certificate file...\n");
+        println!("{:?}", pub_key_pem_string);
+    }
 
     if matches.is_present("sign") {
         let in_filename = matches.value_of("in-file").unwrap();

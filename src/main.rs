@@ -1,6 +1,11 @@
 use anyhow::Result;
-use base64::encode;
+use base64::{decode, encode};
 use clap::{Arg, Command};
+use colored::Colorize;
+use openssl::ec::EcKey;
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::sign::Verifier;
 use openssl::x509::X509;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -11,6 +16,7 @@ use std::{fs::File, io::Write};
 use tokio::task;
 
 use sigstore::crypto::SigningScheme;
+use sigstore::fulcio::FulcioCert;
 
 mod crypto;
 mod rekor_api;
@@ -71,17 +77,41 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .arg(
             Arg::new("extract")
-            .short('e')
-            .long("extract")
-            .takes_value(true)
-            .help("Extract public key from Fulcio signing certificate")
+                .short('e')
+                .long("extract")
+                .takes_value(true)
+                .help("Extract public key from Fulcio signing certificate"),
+        )
+        .arg(
+            Arg::new("verify")
+                .short('v')
+                .long("verify")
+                .takes_value(false)
+                .help("Verify a signature on a file"),
+        )
+        .arg(
+            Arg::new("sig-in")
+                .long("sig-in")
+                .takes_value(true)
+                .help("Path to signature file for verification"),
+        )
+        .arg(
+            Arg::new("pubkey")
+                .long("pubkey")
+                .takes_value(true)
+                .help("Path to pubkey file for verification"),
+        )
+        .arg(
+            Arg::new("signed")
+                .long("signed")
+                .takes_value(true)
+                .help("Path to signed file for verification"),
         )
         .get_matches();
 
     let signer = SigningScheme::ECDSA_P256_SHA256_ASN1.create_signer()?;
 
     if matches.is_present("extract") {
-
         // TODO: should this functionality be added to sigstore-rs?
 
         let cert_file = matches.value_of("extract").unwrap();
@@ -117,7 +147,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
         if open::that(oidc_url.0.to_string()).is_ok() {
             println!(
-                "Open this URL in a browser if it does not automatically open for you:\n{}\n",
+                "{}{}\n",
+                format!(
+                    "\nOpen this URL in a browser if it does not automatically open for you:\n"
+                )
+                .cyan(),
                 oidc_url.0
             );
         }
@@ -140,7 +174,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let (token_response, id_token) = result;
         let email = token_response.email().unwrap();
-        println!("Received token for email scope: {:?}", email);
+        println!(
+            "{} {:?}",
+            format!("Received token for email scope: ").cyan(),
+            email
+        );
 
         let signature = signer.sign(email.to_string().as_bytes()).unwrap();
 
@@ -155,7 +193,10 @@ async fn main() -> Result<(), anyhow::Error> {
         };
 
         let body = serde_json::to_string(&params).unwrap();
-        println!("Requesting signing certificate from Fulcio...");
+        println!(
+            "{}",
+            format!("Requesting signing certificate from Fulcio...").cyan()
+        );
 
         let client = reqwest::Client::new();
         let response = client
@@ -186,7 +227,8 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
         println!(
-            "Saving signing cerificate to {}",
+            "{} {}",
+            format!("Saving signing cerificate to ").cyan(),
             matches.value_of("cert-out").unwrap()
         );
 
@@ -199,7 +241,11 @@ async fn main() -> Result<(), anyhow::Error> {
         // write signature to file
         let mut file = File::create(sig_filename).unwrap();
         file.write_all(&signature).unwrap();
-        println!("Saving signature to {}", sig_filename);
+        println!(
+            "{} {}",
+            format!("Saving signature to ").cyan(),
+            sig_filename
+        );
 
         // read in bytes from cert file
         let mut cert_file_open = File::open(cert_filename).unwrap();
@@ -212,15 +258,62 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let hash = crypto::sha256_digest(PathBuf::from(in_filename))?;
 
-        println!("Sending signature artifacts to rekor...");
+        println!(
+            "{}",
+            format!("Sending signature artifacts to rekor... Created entry:\n").cyan()
+        );
         let log_entry = rekor_api::create_log(&hash, &cert_file_base64, &signature_base64).await;
         println!("{:#?}", log_entry);
 
         // retrieve same entry from rekor
         let uuid = log_entry.unwrap().uuid;
         let retrieved_entry = rekor_api::get_entry_by_uuid(&uuid).await.unwrap();
-        println!("Retrieved log entry from Rekor by UUID... {}", uuid);
-        println!("{:#?}", retrieved_entry);
+        println!(
+            "\n{} {}\n",
+            format!("Retrieved log entry from Rekor by UUID ").cyan(),
+            uuid
+        );
+
+        if matches.is_present("verify") {
+            println!("{}",
+                format!("Retrieving signature and Fulcio certificate from retrieved Rekor log entry...\n").cyan()
+            );
+            let spec = retrieved_entry.decode_body()?.spec;
+            let signature = spec.signature.content;
+            let decoded_fulcio_cert = spec.signature.public_key.decode()?;
+
+            println!("{}", format!("Signature:").cyan());
+            println!("{:?}\n\n", signature);
+            println!("{}", format!("Public key (Fulcio cert):").cyan());
+            println!("{:?}\n\n", decoded_fulcio_cert);
+
+            println!(
+                "\n{}\n",
+                format!("Parsing public key from Fulcio certificate...").cyan()
+            );
+            let fulcio_cert = FulcioCert::new(&decoded_fulcio_cert);
+            let pub_key = fulcio_cert.extract_pubkey_string()?;
+
+            println!(
+                "{} {:?}",
+                format!("Extracted public key as base64 decoded string from Fulcio certificate:\n")
+                    .cyan(),
+                pub_key
+            );
+
+            // verify
+            let ec_pubkey = EcKey::public_key_from_pem(pub_key.as_bytes())?;
+            let pkey = PKey::from_ec_key(ec_pubkey)?;
+
+            let mut verifier = Verifier::new(MessageDigest::sha256(), &pkey)?;
+            verifier.update(&file_bytes)?;
+
+            println!("{}",
+                format!("\nVerifying signature using sig from Rekor entry and pubkey from Fulcio certificate...\n\n").cyan());
+            assert!(verifier.verify(&decode(signature)?)?);
+
+            println!("{}", format!("VERIFICATION SUCCEEDED!\n\n").green());
+        }
     }
     anyhow::Ok(())
 }

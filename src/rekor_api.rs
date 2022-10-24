@@ -3,7 +3,6 @@ use sigstore::rekor::models::{
     hashedrekord::{AlgorithmKind, Data, Hash, PublicKey, Signature, Spec},
     LogEntry, ProposedEntry,
 };
-use url::Url;
 
 pub async fn create_log(
     hash: &str,
@@ -12,14 +11,12 @@ pub async fn create_log(
 ) -> Result<LogEntry, anyhow::Error> {
     let configuration = Configuration::default();
 
-    const KEY_FORMAT: &str = "x509";
     const API_VERSION: &str = "0.0.1";
-    const URL: &str = "https://example.com";
 
     let hash = Hash::new(AlgorithmKind::sha256, hash.to_string());
-    let data = Data::new(hash, Url::parse(URL)?);
+    let data = Data::new(hash);
     let public_key = PublicKey::new(public_key.to_string());
-    let signature = Signature::new(KEY_FORMAT.to_string(), signature.to_string(), public_key);
+    let signature = Signature::new(signature.to_string(), public_key);
     let spec = Spec::new(signature, data);
     let proposed_entry = ProposedEntry::Hashedrekord {
         api_version: API_VERSION.to_string(),

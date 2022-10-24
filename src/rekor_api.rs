@@ -29,3 +29,10 @@ pub async fn create_log(
     let log_entry = entries_api::create_log_entry(&configuration, proposed_entry).await;
     Ok(log_entry?)
 }
+
+pub async fn get_entry_by_uuid(uuid: &str) -> Result<LogEntry, anyhow::Error> {
+    let configuration = Configuration::default();
+
+    let log_entry = entries_api::get_log_entry_by_uuid(&configuration, uuid).await;
+    Ok(log_entry?)
+}
